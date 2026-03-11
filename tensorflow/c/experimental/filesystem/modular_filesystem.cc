@@ -52,8 +52,7 @@ using UniquePtrTo_TF_Status =
     ::std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)>;
 
 Status ModularFileSystem::NewRandomAccessFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<RandomAccessFile>* result) {
+    const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
   if (ops_->new_random_access_file == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", fname, " does not support NewRandomAccessFile()"));
@@ -72,8 +71,7 @@ Status ModularFileSystem::NewRandomAccessFile(
 }
 
 Status ModularFileSystem::NewWritableFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   if (ops_->new_writable_file == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", fname, " does not support NewWritableFile()"));
@@ -92,8 +90,7 @@ Status ModularFileSystem::NewWritableFile(
 }
 
 Status ModularFileSystem::NewAppendableFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   if (ops_->new_appendable_file == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", fname, " does not support NewAppendableFile()"));
@@ -112,8 +109,7 @@ Status ModularFileSystem::NewAppendableFile(
 }
 
 Status ModularFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   if (ops_->new_read_only_memory_region_from_file == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", fname,
@@ -133,8 +129,7 @@ Status ModularFileSystem::NewReadOnlyMemoryRegionFromFile(
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status ModularFileSystem::FileExists(const std::string& fname,
-                                     TransactionToken* token) {
+Status ModularFileSystem::FileExists(const std::string& fname) {
   if (ops_->path_exists == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", fname, " does not support FileExists()"));
@@ -147,10 +142,9 @@ Status ModularFileSystem::FileExists(const std::string& fname,
 }
 
 bool ModularFileSystem::FilesExist(const std::vector<std::string>& files,
-                                   TransactionToken* token,
                                    std::vector<Status>* status) {
   if (ops_->paths_exist == nullptr)
-    return FileSystem::FilesExist(files, token, status);
+    return FileSystem::FilesExist(files, status);
 
   std::vector<char*> translated_names;
   translated_names.reserve(files.size());
@@ -180,7 +174,6 @@ bool ModularFileSystem::FilesExist(const std::vector<std::string>& files,
 }
 
 Status ModularFileSystem::GetChildren(const std::string& dir,
-                                      TransactionToken* token,
                                       std::vector<std::string>* result) {
   if (ops_->get_children == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
@@ -206,7 +199,6 @@ Status ModularFileSystem::GetChildren(const std::string& dir,
 }
 
 Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
-                                           TransactionToken* token,
                                            std::vector<std::string>* result) {
   if (ops_->get_matching_paths == nullptr)
     return internal::GetMatchingPaths(this, Env::Default(), pattern, result);
@@ -228,8 +220,7 @@ Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status ModularFileSystem::DeleteFile(const std::string& fname,
-                                     TransactionToken* token) {
+Status ModularFileSystem::DeleteFile(const std::string& fname) {
   if (ops_->delete_file == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", fname, " does not support DeleteFile()"));
@@ -242,7 +233,6 @@ Status ModularFileSystem::DeleteFile(const std::string& fname,
 }
 
 Status ModularFileSystem::DeleteRecursively(const std::string& dirname,
-                                            TransactionToken* token,
                                             int64_t* undeleted_files,
                                             int64_t* undeleted_dirs) {
   if (undeleted_files == nullptr || undeleted_dirs == nullptr)
@@ -251,7 +241,7 @@ Status ModularFileSystem::DeleteRecursively(const std::string& dirname,
         "`undeleted_dirs` set to NULL");
 
   if (ops_->delete_recursively == nullptr)
-    return FileSystem::DeleteRecursively(dirname, token, undeleted_files,
+    return FileSystem::DeleteRecursively(dirname, undeleted_files,
                                          undeleted_dirs);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
@@ -265,8 +255,7 @@ Status ModularFileSystem::DeleteRecursively(const std::string& dirname,
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status ModularFileSystem::DeleteDir(const std::string& dirname,
-                                    TransactionToken* token) {
+Status ModularFileSystem::DeleteDir(const std::string& dirname) {
   if (ops_->delete_dir == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", dirname, " does not support DeleteDir()"));
@@ -278,10 +267,9 @@ Status ModularFileSystem::DeleteDir(const std::string& dirname,
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname,
-                                               TransactionToken* token) {
+Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname) {
   if (ops_->recursively_create_dir == nullptr)
-    return FileSystem::RecursivelyCreateDir(dirname, token);
+    return FileSystem::RecursivelyCreateDir(dirname);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   std::string translated_name = TranslateName(dirname);
@@ -290,8 +278,7 @@ Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname,
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status ModularFileSystem::CreateDir(const std::string& dirname,
-                                    TransactionToken* token) {
+Status ModularFileSystem::CreateDir(const std::string& dirname) {
   if (ops_->create_dir == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", dirname, " does not support CreateDir()"));
@@ -303,8 +290,7 @@ Status ModularFileSystem::CreateDir(const std::string& dirname,
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status ModularFileSystem::Stat(const std::string& fname,
-                               TransactionToken* token, FileStatistics* stat) {
+Status ModularFileSystem::Stat(const std::string& fname, FileStatistics* stat) {
   if (ops_->stat == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
         "Filesystem for ", fname, " does not support Stat()"));
@@ -327,10 +313,8 @@ Status ModularFileSystem::Stat(const std::string& fname,
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status ModularFileSystem::IsDirectory(const std::string& name,
-                                      TransactionToken* token) {
-  if (ops_->is_directory == nullptr)
-    return FileSystem::IsDirectory(name, token);
+Status ModularFileSystem::IsDirectory(const std::string& name) {
+  if (ops_->is_directory == nullptr) return FileSystem::IsDirectory(name);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   std::string translated_name = TranslateName(name);
@@ -340,7 +324,6 @@ Status ModularFileSystem::IsDirectory(const std::string& name,
 }
 
 Status ModularFileSystem::GetFileSize(const std::string& fname,
-                                      TransactionToken* token,
                                       uint64* file_size) {
   if (ops_->get_file_size == nullptr) {
     FileStatistics stat;
@@ -361,8 +344,7 @@ Status ModularFileSystem::GetFileSize(const std::string& fname,
 }
 
 Status ModularFileSystem::RenameFile(const std::string& src,
-                                     const std::string& target,
-                                     TransactionToken* token) {
+                                     const std::string& target) {
   if (ops_->rename_file == nullptr) {
     Status status = CopyFile(src, target);
     if (status.ok()) status = DeleteFile(src);
@@ -378,10 +360,8 @@ Status ModularFileSystem::RenameFile(const std::string& src,
 }
 
 Status ModularFileSystem::CopyFile(const std::string& src,
-                                   const std::string& target,
-                                   TransactionToken* token) {
-  if (ops_->copy_file == nullptr)
-    return FileSystem::CopyFile(src, target, token);
+                                   const std::string& target) {
+  if (ops_->copy_file == nullptr) return FileSystem::CopyFile(src, target);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   std::string translated_src = TranslateName(src);
@@ -403,7 +383,7 @@ std::string ModularFileSystem::TranslateName(const std::string& name) const {
   return ret;
 }
 
-void ModularFileSystem::FlushCaches(TransactionToken* token) {
+void ModularFileSystem::FlushCaches() {
   if (ops_->flush_caches != nullptr) ops_->flush_caches(filesystem_.get());
 }
 
