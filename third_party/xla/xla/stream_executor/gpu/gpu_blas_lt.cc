@@ -243,6 +243,7 @@ absl::StatusOr<ComputationType> GetBlasComputationType(
       case PrimitiveType::F64:  // fall-through
       case PrimitiveType::C128:
         return ComputationType::kF64;
+      case PrimitiveType::S8:
       case PrimitiveType::S32:
         return ComputationType::kI32;
       default:
