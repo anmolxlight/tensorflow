@@ -190,7 +190,7 @@ class PerDeviceCollector {
 
   void CreateXEvent(CuptiTracerEvent& event, XPlaneBuilder* plane,
                     uint64_t start_gpu_ns, uint64_t end_gpu_ns,
-                    XLineBuilder* line) {
+                    XLineBuilder* line, int num_occurrences) {
     if (event.start_time_ns < start_gpu_ns || event.end_time_ns > end_gpu_ns ||
         event.start_time_ns > event.end_time_ns) {
       VLOG(2) << "events have abnormal timestamps:" << event.name
@@ -219,6 +219,7 @@ class PerDeviceCollector {
     VLOG(7) << "Adding event to line=" << line->Id();
     xevent.SetTimestampNs(event.start_time_ns);
     xevent.SetEndTimestampNs(event.end_time_ns);
+    xevent.SetNumOccurrences(num_occurrences);
     if (event.source == CuptiTracerEventSource::DriverCallback) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kDeviceId)),
@@ -427,19 +428,39 @@ class PerDeviceCollector {
  public:
   PerDeviceCollector() = default;
 
-  void AddEvent(CuptiTracerEvent&& event) {
+  void AddDeviceEvent(CuptiTracerEvent&& event, bool is_aggregated_tracing) {
     absl::MutexLock l(m_);
-    events_.emplace_back(std::move(event));
+    if (is_aggregated_tracing) {
+      auto name = !event.name.empty() ? event.name : event.annotation;
+      auto it = aggregated_event_index_map_.find(name);
+      if (it == aggregated_event_index_map_.end()) {
+        aggregated_event_index_map_.emplace(name, events_.size());
+        events_.emplace_back(std::move(event));
+        aggregated_event_occurence_count_.emplace_back(1);
+        return;
+      }
+      events_[it->second].end_time_ns +=
+          event.end_time_ns - event.start_time_ns;
+      aggregated_event_occurence_count_[it->second]++;
+    } else {
+      events_.emplace_back(std::move(event));
+    }
   }
 
   size_t Flush(uint64_t start_gpu_ns, uint64_t end_gpu_ns,
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane,
-               XPlaneBuilder* nvtx_plane) {
+               XPlaneBuilder* nvtx_plane, bool is_aggregated_tracing) {
     absl::MutexLock l(m_);
     // Tracking event types per line.
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
-    for (auto& event : events_) {
+    for (auto it = events_.begin(); it != events_.end(); ++it) {
+      auto& event = *it;
+      int64_t num_occurrences = 1;
+      if (is_aggregated_tracing) {
+        num_occurrences =
+            aggregated_event_occurence_count_[it - events_.begin()];
+      }
       // Environment events are counter-like metrics and handled separately on
       // counter lines. All other events are processed as trace events on
       // regular host/device lines.
@@ -463,7 +484,8 @@ class PerDeviceCollector {
               << plane->Name();
       XLineBuilder line = plane->GetOrCreateLine(line_id);
       line.SetTimestampNs(start_gpu_ns);
-      CreateXEvent(event, plane, start_gpu_ns, end_gpu_ns, &line);
+      CreateXEvent(event, plane, start_gpu_ns, end_gpu_ns, &line,
+                   num_occurrences);
       events_types_per_line[line_id].emplace(event.type);
     }
 
@@ -513,6 +535,8 @@ class PerDeviceCollector {
     }
     size_t num_events = events_.size();
     events_.clear();
+    aggregated_event_index_map_.clear();
+    aggregated_event_occurence_count_.clear();
     return num_events;
   }
 
@@ -629,6 +653,10 @@ class PerDeviceCollector {
  private:
   absl::Mutex m_;
   std::vector<CuptiTracerEvent> events_ TF_GUARDED_BY(m_);
+  absl::flat_hash_map<std::string, size_t> aggregated_event_index_map_
+      TF_GUARDED_BY(m_);
+  std::vector<size_t> aggregated_event_occurence_count_ TF_GUARDED_BY(m_);
+
   cudaOccDeviceProp device_properties_;
   absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache_;
 };
@@ -876,7 +904,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         }
       }
     }
-    per_device_collector_[event.device_id].AddEvent(std::move(event));
+    per_device_collector_[event.device_id].AddDeviceEvent(
+        std::move(event), options_.is_aggregated_tracing);
   }
   void OnEventsDropped(const std::string& reason,
                        uint32_t num_events) override {
@@ -925,7 +954,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
           device_ordinal, &device_plane);
       num_events += per_device_collector_[device_ordinal].Flush(
-          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane, &nvtx_plane);
+          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane, &nvtx_plane,
+          options_.is_aggregated_tracing);
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
