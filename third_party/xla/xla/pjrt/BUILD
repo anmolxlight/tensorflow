@@ -196,6 +196,11 @@ cc_library(
     deps = [
         ":common_pjrt_client",
         ":utils",
+        "//xla/hlo/ir:hlo_sharding",
+        "//xla/mlir/utils:type_util",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
+        "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 
